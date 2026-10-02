@@ -10,6 +10,9 @@ import {
   ArrowRight,
   HelpCircle,
 } from "lucide-react";
+import { db } from "@/server/db";
+import { websites } from "@/server/db/schema";
+import { eq } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -79,6 +82,11 @@ export default async function DashboardPage() {
 
   if (!session) {
     redirect("/login");
+  }
+
+  const userWebsites = await db.select().from(websites).where(eq(websites.ownerId, session.user.id)).limit(1);
+  if (userWebsites.length === 0) {
+    redirect("/dashboard/onboarding");
   }
 
   const firstName = session.user.name?.split(" ")[0] || "there";
