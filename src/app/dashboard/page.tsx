@@ -11,50 +11,12 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { db } from "@/server/db";
-import { websites } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { websites, visitorQuestions, knowledgeEntries } from "@/server/db/schema";
+import { eq, and } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
-
-const METRIC_CARDS = [
-  {
-    title: "Website Status",
-    value: "Draft",
-    description: "Not yet published",
-    icon: Globe,
-    color: "text-blue-500",
-  },
-  {
-    title: "AI Conversations",
-    value: "0",
-    description: "Total chats with visitors",
-    icon: Bot,
-    color: "text-purple-500",
-  },
-  {
-    title: "Visitor Questions",
-    value: "0",
-    description: "Questions received",
-    icon: MessageCircleQuestion,
-    color: "text-amber-500",
-  },
-  {
-    title: "Unanswered",
-    value: "0",
-    description: "Waiting for your answer",
-    icon: HelpCircle,
-    color: "text-red-500",
-  },
-  {
-    title: "Knowledge Entries",
-    value: "0",
-    description: "Approved answers in your base",
-    icon: BookOpen,
-    color: "text-green-500",
-  },
-];
 
 const QUICK_ACTIONS = [
   {
@@ -72,7 +34,7 @@ const QUICK_ACTIONS = [
   {
     title: "Preview Site",
     description: "See how your site looks to visitors",
-    href: "#",
+    href: "/dashboard/website",
     icon: Eye,
   },
 ];
@@ -84,12 +46,85 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const userWebsites = await db.select().from(websites).where(eq(websites.ownerId, session.user.id)).limit(1);
+  const userWebsites = await db
+    .select()
+    .from(websites)
+    .where(eq(websites.ownerId, session.user.id))
+    .limit(1);
+
   if (userWebsites.length === 0) {
     redirect("/dashboard/onboarding");
   }
 
+  const site = userWebsites[0];
   const firstName = session.user.name?.split(" ")[0] || "there";
+
+  // Query live counts safely
+  let totalQuestions = 0;
+  let unansweredQuestions = 0;
+  let approvedKnowledge = 0;
+
+  try {
+    const questions = await db
+      .select({ status: visitorQuestions.status })
+      .from(visitorQuestions)
+      .where(eq(visitorQuestions.websiteId, site.id));
+
+    totalQuestions = questions.length;
+    unansweredQuestions = questions.filter((q) => q.status === "unanswered").length;
+
+    const knowledge = await db
+      .select({ id: knowledgeEntries.id })
+      .from(knowledgeEntries)
+      .where(
+        and(
+          eq(knowledgeEntries.websiteId, site.id),
+          eq(knowledgeEntries.isApproved, true)
+        )
+      );
+
+    approvedKnowledge = knowledge.length;
+  } catch (error) {
+    console.error("Dashboard metrics query error:", error);
+  }
+
+  const metricCards = [
+    {
+      title: "Website Status",
+      value: site.isPublished ? "Published" : "Draft",
+      description: site.isPublished ? "Live to the public" : "Not yet published",
+      icon: Globe,
+      color: site.isPublished ? "text-green-500" : "text-blue-500",
+    },
+    {
+      title: "AI Conversations",
+      value: "0",
+      description: "Total chats with visitors",
+      icon: Bot,
+      color: "text-purple-500",
+    },
+    {
+      title: "Visitor Questions",
+      value: totalQuestions.toString(),
+      description: "Questions recorded",
+      icon: MessageCircleQuestion,
+      color: "text-amber-500",
+    },
+    {
+      title: "Unanswered",
+      value: unansweredQuestions.toString(),
+      description: "Waiting for your answer",
+      icon: HelpCircle,
+      color: unansweredQuestions > 0 ? "text-red-500" : "text-muted-foreground",
+    },
+    {
+      title: "Knowledge Entries",
+      value: approvedKnowledge.toString(),
+      description: "Approved answers in your base",
+      icon: BookOpen,
+      color: "text-green-500",
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -105,7 +140,7 @@ export default async function DashboardPage() {
 
       {/* Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {METRIC_CARDS.map((card) => (
+        {metricCards.map((card) => (
           <Card key={card.title}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
@@ -162,13 +197,44 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {/* Questions Prompt Callout if there are unanswered questions */}
+      {unansweredQuestions > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <HelpCircle className="h-5 w-5" />
+              <CardTitle className="text-base font-semibold">
+                You have {unansweredQuestions} unanswered visitor{" "}
+                {unansweredQuestions === 1 ? "question" : "questions"}!
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-0">
+            <p className="text-sm text-muted-foreground">
+              Provide approved answers so your AI chatbot can immediately start answering future visitors.
+            </p>
+            <Link
+              href="/dashboard/questions"
+              className={cn(
+                buttonVariants({ variant: "default", size: "sm" }),
+                "shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+              )}
+            >
+              Answer Questions
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Recent Activity Placeholder */}
       <div>
         <h3 className="mb-4 text-lg font-semibold">Recent Activity</h3>
         <Card>
           <CardContent className="flex h-32 items-center justify-center">
             <p className="text-sm text-muted-foreground">
-              No activity yet. Create and publish your website to get started!
+              {totalQuestions > 0
+                ? `${totalQuestions} visitor questions recorded so far across your site.`
+                : "No visitor activity yet. Publish your website and share the link to start collecting questions!"}
             </p>
           </CardContent>
         </Card>
