@@ -84,10 +84,13 @@ export function ContentEditor({ website, sections: initialSections }: { website:
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to save');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save section');
+      }
       toast.success('Section saved successfully');
-    } catch (error) {
-      toast.error('Failed to save section');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save section');
     } finally {
       setLoading(null);
     }
@@ -118,10 +121,13 @@ export function ContentEditor({ website, sections: initialSections }: { website:
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to reorder');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to reorder sections');
+      }
       toast.success('Sections reordered');
-    } catch (error) {
-      toast.error('Failed to reorder sections');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to reorder sections');
       setSections(sections);
     } finally {
       setReordering(false);

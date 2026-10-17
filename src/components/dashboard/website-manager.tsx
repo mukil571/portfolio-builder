@@ -35,14 +35,15 @@ export function WebsiteManager({ website }: WebsiteManagerProps) {
         body: JSON.stringify({ isPublished: !website.isPublished }),
       });
 
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error('Failed to update website status');
+        throw new Error(data.error || 'Failed to update website status');
       }
 
       toast.success(`Website ${!website.isPublished ? 'published' : 'unpublished'} successfully`);
       router.refresh();
-    } catch (error) {
-      toast.error('Failed to update website status');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update website status');
       console.error(error);
     } finally {
       setIsUpdating(false);
