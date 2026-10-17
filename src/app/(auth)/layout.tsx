@@ -1,11 +1,20 @@
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
+import { getSession } from "@/server/auth";
+import { redirect } from "next/navigation";
 
-export default function AuthLayout({
+export default async function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getSession();
+
+  // Redirect genuinely authenticated users away from login/signup
+  if (session) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="flex min-h-screen">
       {/* Left side - Branding */}

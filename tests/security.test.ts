@@ -13,6 +13,7 @@ import {
   validateSectionTitle,
   validateChatPayload,
 } from "../src/server/security/validation.ts";
+import { evaluateProxyAuth } from "../src/server/security/proxy-auth.ts";
 
 describe("Security & Hardening Test Suite (Phase 11)", () => {
   beforeEach(() => {
@@ -220,6 +221,75 @@ describe("Security & Hardening Test Suite (Phase 11)", () => {
       const res = validateChatPayload(payload);
       assert.equal(res.valid, false);
       assert.match(res.error!, /4000 characters/i);
+    });
+  });
+
+  describe("Next.js 16 Proxy Perimeter Authentication & Routing", () => {
+    it("redirects unauthenticated requests targeting /dashboard to /login", () => {
+      const decision = evaluateProxyAuth("/dashboard", "", false, "https://example.com");
+      assert.equal(decision.action, "redirect");
+      assert.equal(
+        decision.redirectUrl,
+        "https://example.com/login?callbackUrl=%2Fdashboard"
+      );
+    });
+
+    it("preserves path and query parameters in the callbackUrl", () => {
+      const decision = evaluateProxyAuth(
+        "/dashboard/content",
+        "?tab=skills&edit=true",
+        false,
+        "https://example.com"
+      );
+      assert.equal(decision.action, "redirect");
+      assert.equal(
+        decision.redirectUrl,
+        "https://example.com/login?callbackUrl=%2Fdashboard%2Fcontent%3Ftab%3Dskills%26edit%3Dtrue"
+      );
+    });
+
+    it("allows requests to /dashboard through when a session cookie is present", () => {
+      const decision = evaluateProxyAuth(
+        "/dashboard",
+        "",
+        true,
+        "https://example.com"
+      );
+      assert.equal(decision.action, "next");
+      assert.equal(decision.redirectUrl, undefined);
+    });
+
+    it("allows requests to nested dashboard routes through when a session cookie is present", () => {
+      const decision = evaluateProxyAuth(
+        "/dashboard/questions",
+        "?status=unanswered",
+        true,
+        "https://example.com"
+      );
+      assert.equal(decision.action, "next");
+      assert.equal(decision.redirectUrl, undefined);
+    });
+
+    it("allows public website routes through without redirection regardless of cookie state", () => {
+      const unauthSite = evaluateProxyAuth("/site/alex-dev", "", false, "https://example.com");
+      assert.equal(unauthSite.action, "next");
+
+      const authSite = evaluateProxyAuth("/site/alex-dev", "", true, "https://example.com");
+      assert.equal(authSite.action, "next");
+
+      const root = evaluateProxyAuth("/", "", false, "https://example.com");
+      assert.equal(root.action, "next");
+    });
+
+    it("does not redirect /login or /signup in proxy, avoiding redirect loops on expired cookies", () => {
+      const loginUnauth = evaluateProxyAuth("/login", "", false, "https://example.com");
+      assert.equal(loginUnauth.action, "next");
+
+      const loginWithCookie = evaluateProxyAuth("/login", "", true, "https://example.com");
+      assert.equal(loginWithCookie.action, "next");
+
+      const signupWithCookie = evaluateProxyAuth("/signup", "", true, "https://example.com");
+      assert.equal(signupWithCookie.action, "next");
     });
   });
 });
