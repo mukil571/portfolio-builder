@@ -14,6 +14,8 @@ import {
   validateChatPayload,
 } from "../src/server/security/validation.ts";
 import { evaluateProxyAuth } from "../src/server/security/proxy-auth.ts";
+import { categorizeAIError } from "../src/server/ai/errors.ts";
+import { APICallError, LoadAPIKeyError } from "ai";
 
 describe("Security & Hardening Test Suite (Phase 11)", () => {
   beforeEach(() => {
@@ -290,6 +292,63 @@ describe("Security & Hardening Test Suite (Phase 11)", () => {
 
       const signupWithCookie = evaluateProxyAuth("/signup", "", true, "https://example.com");
       assert.equal(signupWithCookie.action, "next");
+    });
+  });
+
+  describe("AI Error Categorization & Safe Response Formatting", () => {
+    it("categorizes quota exceeded (429) errors safely without leaking internal URLs or prompts", () => {
+      const err = new APICallError({
+        message: "Resource exhausted: Quota exceeded for model gemini-2.0-flash",
+        statusCode: 429,
+        url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=SECRET_KEY",
+      });
+      const cat = categorizeAIError(err);
+      assert.equal(cat.code, "AI_QUOTA_EXCEEDED");
+      assert.doesNotMatch(cat.safeMessage, /SECRET_KEY|gemini|generativelanguage/);
+    });
+
+    it("categorizes authentication/key errors (401/403) with AI_AUTH_ERROR code", () => {
+      const err = new APICallError({
+        message: "API key not valid. Please pass a valid API key.",
+        statusCode: 400,
+        url: "https://generativelanguage.googleapis.com",
+      });
+      const cat = categorizeAIError(err);
+      assert.equal(cat.code, "AI_AUTH_ERROR");
+      assert.doesNotMatch(cat.safeMessage, /generativelanguage/);
+    });
+
+    it("categorizes unregistered caller errors with AI_AUTH_ERROR code", () => {
+      const err = new Error(
+        "Method doesn't allow unregistered callers (callers without established identity)."
+      );
+      const cat = categorizeAIError(err);
+      assert.equal(cat.code, "AI_AUTH_ERROR");
+    });
+
+    it("categorizes missing provider API key with AI_CONFIG_ERROR code", () => {
+      const err = new LoadAPIKeyError({
+        message: "Google Generative AI API key is missing.",
+      });
+      const cat = categorizeAIError(err);
+      assert.equal(cat.code, "AI_CONFIG_ERROR");
+    });
+
+    it("categorizes upstream provider 500 errors with AI_PROVIDER_ERROR code", () => {
+      const err = new APICallError({
+        message: "Internal Server Error",
+        statusCode: 500,
+        url: "https://generativelanguage.googleapis.com",
+      });
+      const cat = categorizeAIError(err);
+      assert.equal(cat.code, "AI_PROVIDER_ERROR");
+    });
+
+    it("categorizes unexpected errors into safe generic AI_STREAM_ERROR fallback", () => {
+      const err = new Error("TypeError: Failed to fetch");
+      const cat = categorizeAIError(err);
+      assert.equal(cat.code, "AI_STREAM_ERROR");
+      assert.doesNotMatch(cat.safeMessage, /TypeError/);
     });
   });
 });

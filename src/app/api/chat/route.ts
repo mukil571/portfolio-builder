@@ -5,6 +5,7 @@ import { aggregateKnowledge } from "@/server/ai/knowledge";
 import { recordUnansweredQuestion } from "@/server/ai/questions";
 import { checkRateLimit, getClientIp } from "@/server/security/rate-limit";
 import { validateChatPayload } from "@/server/security/validation";
+import { categorizeAIError } from "@/server/ai/errors";
 import { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
       return new Response(
         JSON.stringify({
           error: "Too many chat requests. Please wait a moment before trying again.",
+          code: "RATE_LIMITED",
         }),
         {
           status: 429,
@@ -39,7 +41,10 @@ export async function POST(req: NextRequest) {
       body = await req.json();
     } catch {
       return new Response(
-        JSON.stringify({ error: "Invalid JSON in request body" }),
+        JSON.stringify({
+          error: "Invalid JSON in request body",
+          code: "INVALID_JSON",
+        }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -47,7 +52,10 @@ export async function POST(req: NextRequest) {
     const validation = validateChatPayload(body);
     if (!validation.valid || !validation.websiteId || !validation.messages) {
       return new Response(
-        JSON.stringify({ error: validation.error || "Invalid request payload" }),
+        JSON.stringify({
+          error: validation.error || "Invalid request payload",
+          code: "INVALID_PAYLOAD",
+        }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -59,7 +67,10 @@ export async function POST(req: NextRequest) {
 
     if (!context) {
       return new Response(
-        JSON.stringify({ error: "Website not found or not published" }),
+        JSON.stringify({
+          error: "Website not found or not published",
+          code: "SITE_NOT_FOUND",
+        }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -69,10 +80,15 @@ export async function POST(req: NextRequest) {
     try {
       model = getAIModel();
     } catch (providerError) {
-      console.error("AI provider initialization error:", providerError);
+      console.error(
+        "[Chat API Provider Error]:",
+        providerError instanceof Error ? providerError.message : providerError
+      );
       return new Response(
         JSON.stringify({
-          error: "Chat service is temporarily unavailable. Please try again later.",
+          error:
+            "Chat service is temporarily unavailable. Missing AI provider credentials.",
+          code: "AI_CONFIG_ERROR",
         }),
         { status: 503, headers: { "Content-Type": "application/json" } }
       );
@@ -93,6 +109,15 @@ export async function POST(req: NextRequest) {
       model,
       system: context.systemPrompt,
       messages: modelMessages,
+      onError: ({ error }) => {
+        const errorName = error instanceof Error ? error.name : "UnknownError";
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("[Chat Stream Error]:", {
+          name: errorName,
+          message: errorMessage,
+          websiteId: context.site.id,
+        });
+      },
       tools: {
         record_unanswered_question: tool({
           description:
@@ -134,12 +159,17 @@ export async function POST(req: NextRequest) {
         "X-RateLimit-Limit": rateLimit.limit.toString(),
         "X-RateLimit-Remaining": rateLimit.remaining.toString(),
       },
+      onError: (error) => {
+        const { safeMessage, code } = categorizeAIError(error);
+        return `${safeMessage} (Code: ${code})`;
+      },
     });
   } catch (error) {
-    console.error("Chat API error:", error);
+    console.error("[Chat API Route Error]:", error);
     return new Response(
       JSON.stringify({
         error: "Unable to process your request at this time. Please try again.",
+        code: "INTERNAL_SERVER_ERROR",
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );

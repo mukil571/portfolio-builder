@@ -14,9 +14,13 @@ export const config = {
       | "openai"
       | "gemini"
       | "anthropic",
-    openaiKey: process.env.OPENAI_API_KEY,
-    geminiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-    anthropicKey: process.env.ANTHROPIC_API_KEY,
+    openaiKey: process.env.OPENAI_API_KEY?.trim(),
+    geminiKey: (
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY
+    )?.trim(),
+    anthropicKey: process.env.ANTHROPIC_API_KEY?.trim(),
   },
   app: {
     url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",

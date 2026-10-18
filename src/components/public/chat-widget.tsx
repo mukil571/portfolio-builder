@@ -72,6 +72,24 @@ export function ChatWidget({ websiteId, websiteTitle }: ChatWidgetProps) {
       .join("");
   };
 
+  // Helper to extract a friendly error string (parsing JSON status payloads if applicable)
+  const getErrorMessage = (err: Error | undefined): string => {
+    if (!err?.message) return "Failed to get a response. Please try again.";
+    try {
+      const parsed = JSON.parse(err.message);
+      if (typeof parsed === "object" && parsed !== null) {
+        if (parsed.error && parsed.code) {
+          return `${parsed.error} (${parsed.code})`;
+        }
+        if (parsed.error) return String(parsed.error);
+        if (parsed.message) return String(parsed.message);
+      }
+    } catch {
+      // Not JSON, return message as is
+    }
+    return err.message;
+  };
+
   return (
     <>
       {/* Chat Panel */}
@@ -164,7 +182,7 @@ export function ChatWidget({ websiteId, websiteTitle }: ChatWidgetProps) {
                   Something went wrong
                 </div>
                 <p className="text-muted-foreground text-xs mb-2">
-                  {error?.message || "Failed to get a response. Please try again."}
+                  {getErrorMessage(error)}
                 </p>
                 <button
                   onClick={onRetry}
