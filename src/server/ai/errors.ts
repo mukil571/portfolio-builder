@@ -81,15 +81,15 @@ export function categorizeAIError(error: unknown): SafeChatError {
 
 /**
  * Resolves and sanitizes the Gemini model identifier from an optional raw environment value.
- * Defaults to 'gemini-2.5-flash', which is the standard, broadly available production Flash model.
+ * Defaults to 'gemini-3.5-flash-lite', which is the standard, broadly available production Flash model.
  */
 export function resolveGeminiModelId(rawEnv?: string): string {
-  if (!rawEnv) return "gemini-2.5-flash";
+  if (!rawEnv) return "gemini-3.5-flash-lite";
   const cleaned = rawEnv
     .trim()
     .replace(/^["']|["']$/g, "")
     .trim()
     .replace(/^models\//, "")
     .trim();
-  return cleaned || "gemini-2.5-flash";
+  return cleaned || "gemini-3.5-flash-lite";
 }

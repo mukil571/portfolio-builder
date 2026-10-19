@@ -353,38 +353,38 @@ describe("Security & Hardening Test Suite (Phase 11)", () => {
   });
 
   describe("Gemini Model Selection & Sanitization", () => {
-    it("defaults to gemini-2.5-flash when no override is provided", () => {
-      assert.equal(resolveGeminiModelId(undefined), "gemini-2.5-flash");
-      assert.equal(resolveGeminiModelId(""), "gemini-2.5-flash");
-      assert.equal(resolveGeminiModelId("   "), "gemini-2.5-flash");
+    it("defaults to gemini-3.5-flash-lite when no override is provided", () => {
+      assert.equal(resolveGeminiModelId(undefined), "gemini-3.5-flash-lite");
+      assert.equal(resolveGeminiModelId(""), "gemini-3.5-flash-lite");
+      assert.equal(resolveGeminiModelId("   "), "gemini-3.5-flash-lite");
     });
 
     it("strips whitespace and accidental surrounding quotes from model override", () => {
       assert.equal(
-        resolveGeminiModelId(' "gemini-2.5-flash" '),
-        "gemini-2.5-flash"
+        resolveGeminiModelId(' "gemini-3.5-flash-lite" '),
+        "gemini-3.5-flash-lite"
       );
       assert.equal(
-        resolveGeminiModelId(" 'gemini-2.5-flash-lite' "),
-        "gemini-2.5-flash-lite"
+        resolveGeminiModelId(" 'gemini-2.5-flash' "),
+        "gemini-2.5-flash"
       );
     });
 
     it("strips accidental models/ prefix from override", () => {
       assert.equal(
-        resolveGeminiModelId("models/gemini-2.5-flash"),
-        "gemini-2.5-flash"
+        resolveGeminiModelId("models/gemini-3.5-flash-lite"),
+        "gemini-3.5-flash-lite"
       );
       assert.equal(
-        resolveGeminiModelId('"models/gemini-2.5-flash-lite"'),
-        "gemini-2.5-flash-lite"
+        resolveGeminiModelId('"models/gemini-2.5-flash"'),
+        "gemini-2.5-flash"
       );
     });
 
     it("preserves valid custom Flash models", () => {
       assert.equal(
-        resolveGeminiModelId("gemini-2.5-flash-lite"),
-        "gemini-2.5-flash-lite"
+        resolveGeminiModelId("gemini-2.5-flash"),
+        "gemini-2.5-flash"
       );
       assert.equal(
         resolveGeminiModelId("gemini-2.0-flash-001"),

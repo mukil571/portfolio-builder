@@ -27,7 +27,7 @@ export const config = {
         .trim()
         .replace(/^models\//, "")
         .trim()
-    ) || "gemini-2.5-flash",
+    ) || "gemini-3.5-flash-lite",
     anthropicKey: process.env.ANTHROPIC_API_KEY?.trim(),
   },
   app: {
