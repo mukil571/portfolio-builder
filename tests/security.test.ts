@@ -14,7 +14,7 @@ import {
   validateChatPayload,
 } from "../src/server/security/validation.ts";
 import { evaluateProxyAuth } from "../src/server/security/proxy-auth.ts";
-import { categorizeAIError } from "../src/server/ai/errors.ts";
+import { categorizeAIError, resolveGeminiModelId } from "../src/server/ai/errors.ts";
 import { APICallError, LoadAPIKeyError } from "ai";
 
 describe("Security & Hardening Test Suite (Phase 11)", () => {
@@ -349,6 +349,47 @@ describe("Security & Hardening Test Suite (Phase 11)", () => {
       const cat = categorizeAIError(err);
       assert.equal(cat.code, "AI_STREAM_ERROR");
       assert.doesNotMatch(cat.safeMessage, /TypeError/);
+    });
+  });
+
+  describe("Gemini Model Selection & Sanitization", () => {
+    it("defaults to gemini-2.5-flash when no override is provided", () => {
+      assert.equal(resolveGeminiModelId(undefined), "gemini-2.5-flash");
+      assert.equal(resolveGeminiModelId(""), "gemini-2.5-flash");
+      assert.equal(resolveGeminiModelId("   "), "gemini-2.5-flash");
+    });
+
+    it("strips whitespace and accidental surrounding quotes from model override", () => {
+      assert.equal(
+        resolveGeminiModelId(' "gemini-2.5-flash" '),
+        "gemini-2.5-flash"
+      );
+      assert.equal(
+        resolveGeminiModelId(" 'gemini-2.5-flash-lite' "),
+        "gemini-2.5-flash-lite"
+      );
+    });
+
+    it("strips accidental models/ prefix from override", () => {
+      assert.equal(
+        resolveGeminiModelId("models/gemini-2.5-flash"),
+        "gemini-2.5-flash"
+      );
+      assert.equal(
+        resolveGeminiModelId('"models/gemini-2.5-flash-lite"'),
+        "gemini-2.5-flash-lite"
+      );
+    });
+
+    it("preserves valid custom Flash models", () => {
+      assert.equal(
+        resolveGeminiModelId("gemini-2.5-flash-lite"),
+        "gemini-2.5-flash-lite"
+      );
+      assert.equal(
+        resolveGeminiModelId("gemini-2.0-flash-001"),
+        "gemini-2.0-flash-001"
+      );
     });
   });
 });

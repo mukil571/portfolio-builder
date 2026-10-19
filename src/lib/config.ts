@@ -20,6 +20,14 @@ export const config = {
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY
     )?.trim(),
+    geminiModel: (
+      process.env.GEMINI_MODEL
+        ?.trim()
+        .replace(/^["']|["']$/g, "")
+        .trim()
+        .replace(/^models\//, "")
+        .trim()
+    ) || "gemini-2.5-flash",
     anthropicKey: process.env.ANTHROPIC_API_KEY?.trim(),
   },
   app: {

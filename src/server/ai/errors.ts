@@ -78,3 +78,18 @@ export function categorizeAIError(error: unknown): SafeChatError {
     code: "AI_STREAM_ERROR",
   };
 }
+
+/**
+ * Resolves and sanitizes the Gemini model identifier from an optional raw environment value.
+ * Defaults to 'gemini-2.5-flash', which is the standard, broadly available production Flash model.
+ */
+export function resolveGeminiModelId(rawEnv?: string): string {
+  if (!rawEnv) return "gemini-2.5-flash";
+  const cleaned = rawEnv
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim()
+    .replace(/^models\//, "")
+    .trim();
+  return cleaned || "gemini-2.5-flash";
+}

@@ -3,7 +3,9 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { LanguageModel } from "ai";
 import { config } from "@/lib/config";
+import { resolveGeminiModelId } from "./errors";
 
+export { resolveGeminiModelId };
 export type AIProviderType = "gemini" | "openai" | "anthropic";
 
 /**
@@ -23,7 +25,7 @@ export function getAIModel(): LanguageModel {
       const google = createGoogleGenerativeAI({
         apiKey: config.ai.geminiKey,
       });
-      return google(process.env.GEMINI_MODEL || "gemini-2.0-flash");
+      return google(config.ai.geminiModel);
     }
     case "openai": {
       if (!config.ai.openaiKey) {
