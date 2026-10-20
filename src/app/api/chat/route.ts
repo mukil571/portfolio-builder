@@ -6,6 +6,10 @@ import { recordUnansweredQuestion } from "@/server/ai/questions";
 import { checkRateLimit, getClientIp } from "@/server/security/rate-limit";
 import { validateChatPayload } from "@/server/security/validation";
 import { categorizeAIError } from "@/server/ai/errors";
+import {
+  isGeneralEducationalQuestion,
+  isUnrelatedQuestion,
+} from "@/server/ai/prompt";
 import { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -121,9 +125,24 @@ export async function POST(req: NextRequest) {
       tools: {
         record_unanswered_question: tool({
           description:
-            "Record a visitor question that cannot be answered from the available website content and knowledge base. Call this tool BEFORE responding to the visitor when you determine the question cannot be answered.",
+            "Record a visitor question specifically about the website owner, their background, skills, experience, services, or projects that cannot be answered from the available website content and knowledge base. Do NOT call this tool for general educational questions (such as 'What is React?' or 'Explain Node.js') or for clearly off-topic questions.",
           inputSchema: questionSchema,
           execute: async (input: z.infer<typeof questionSchema>) => {
+            // Guard: ensure general educational or off-topic questions are not recorded as owner questions
+            if (
+              isGeneralEducationalQuestion(input.questionText, context.owner?.name) ||
+              isUnrelatedQuestion(input.questionText, {
+                ownerName: context.owner?.name,
+                siteTitle: context.site.title,
+              })
+            ) {
+              return {
+                success: false as const,
+                message:
+                  "This question is general educational or unrelated. Please answer educational questions directly using general knowledge, or redirect if unrelated; do not record it as an unanswered owner question.",
+              };
+            }
+
             try {
               const res = await recordUnansweredQuestion(
                 context.site.id,

@@ -22,14 +22,27 @@ export interface QuestionStats {
   dismissed: number;
 }
 
+export {
+  normalizeQuestionText,
+  extractSemanticTokens,
+  areQuestionsSemanticallyEquivalent,
+  findSemanticDuplicateQuestion,
+  evaluateQuestionRecording,
+  InMemoryTransactionalQuestionStore,
+} from "./prompt";
+
+import { findSemanticDuplicateQuestion } from "./prompt";
+
 /**
  * Records a visitor question that the AI could not answer.
  *
- * - If a duplicate question already exists for this website (case-insensitive),
- *   increments the ask_count and updates the timestamp.
- * - If new, inserts a row with status 'unanswered'.
+ * - Checks whether an unanswered question with the same meaning already exists
+ *   for this website (semantic duplicate detection).
+ * - If duplicate found, increments ask_count and updates last-asked timestamp (createdAt).
+ * - If new, inserts a row with status 'unanswered' and ask_count 1.
+ * - Strictly isolates questions by websiteId.
  *
- * Returns { recorded: true, isDuplicate: boolean } on success,
+ * Returns { recorded: true, isDuplicate: boolean, questionId: string } on success,
  * or { recorded: false, error: string } on failure.
  */
 export async function recordUnansweredQuestion(
@@ -50,42 +63,64 @@ export async function recordUnansweredQuestion(
   }
 
   try {
-    // Check for duplicate (case-insensitive exact match for this website)
-    const existing = await db
-      .select({ id: visitorQuestions.id })
-      .from(visitorQuestions)
-      .where(
-        and(
-          eq(visitorQuestions.websiteId, websiteId),
-          sql`lower(${visitorQuestions.questionText}) = lower(${trimmed})`
-        )
-      )
-      .limit(1);
+    return await db.transaction(async (tx) => {
+      // 1. Lock the parent website row to serialize concurrent writes for this website.
+      // This eliminates the race condition where simultaneous semantically equivalent
+      // requests might both read before either writes and insert duplicate rows.
+      const siteCheck = await tx
+        .select({ id: websites.id })
+        .from(websites)
+        .where(eq(websites.id, websiteId))
+        .for("update");
 
-    if (existing.length > 0) {
-      // Duplicate: increment ask_count
-      await db
-        .update(visitorQuestions)
-        .set({
-          askCount: sql`${visitorQuestions.askCount} + 1`,
+      if (siteCheck.length === 0) {
+        return { recorded: false, error: "Website not found" };
+      }
+
+      // 2. Fetch existing unanswered questions for this website under the transaction lock
+      const existing = await tx
+        .select({
+          id: visitorQuestions.id,
+          questionText: visitorQuestions.questionText,
+          status: visitorQuestions.status,
         })
-        .where(eq(visitorQuestions.id, existing[0].id));
+        .from(visitorQuestions)
+        .where(
+          and(
+            eq(visitorQuestions.websiteId, websiteId),
+            eq(visitorQuestions.status, "unanswered")
+          )
+        );
 
-      return { recorded: true, isDuplicate: true, questionId: existing[0].id };
-    }
+      // 3. Search for exact or semantic duplicate
+      const duplicate = findSemanticDuplicateQuestion(trimmed, existing);
 
-    // New question: insert
-    const [inserted] = await db
-      .insert(visitorQuestions)
-      .values({
-        websiteId,
-        questionText: trimmed,
-        status: "unanswered",
-        askCount: 1,
-      })
-      .returning({ id: visitorQuestions.id });
+      if (duplicate) {
+        // Duplicate: increment ask_count and update last-asked timestamp
+        await tx
+          .update(visitorQuestions)
+          .set({
+            askCount: sql`${visitorQuestions.askCount} + 1`,
+            createdAt: new Date(),
+          })
+          .where(eq(visitorQuestions.id, duplicate.id));
 
-    return { recorded: true, isDuplicate: false, questionId: inserted.id };
+        return { recorded: true, isDuplicate: true, questionId: duplicate.id };
+      }
+
+      // 4. New question: insert row with status 'unanswered' and askCount 1
+      const [inserted] = await tx
+        .insert(visitorQuestions)
+        .values({
+          websiteId,
+          questionText: trimmed,
+          status: "unanswered",
+          askCount: 1,
+        })
+        .returning({ id: visitorQuestions.id });
+
+      return { recorded: true, isDuplicate: false, questionId: inserted.id };
+    });
   } catch (error) {
     console.error("Failed to record visitor question:", error);
     return { recorded: false, error: "Database error" };
